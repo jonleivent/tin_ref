@@ -58,11 +58,6 @@
 //! where a group of objects are allocated separately, but are
 //! deallocated together (or not at all).
 //!
-//! Unless using the functions get_many_maybe_mut, get_many_mut_maybe,
-//! or get_many_mut, all of which do runtime checks for uniqueness,
-//! there is only ever one mutable reference under the "control" of a
-//! single TinTok<'i>, or multiple shared references.
-//!
 //! (Note on the syntactic sourness: maybe there is a way to use
 //! macros to reduce the amount of get(tok) and get_mut(tok)
 //! repititions?  Like maybe:
@@ -246,68 +241,6 @@ impl<'i, 'r, T: ?Sized + 'r> PartialEq for TinRef<'i, 'r, T> {
     #[inline(always)]
     fn eq(&self, other: &Self) -> bool {
         self.p == other.p
-    }
-}
-
-impl<'i> TinTok<'i> {
-    // The safety of these get_many function variants is based on the
-    // same properties as the safety of TinRef::get_mut - note the
-    // similarity of their signatures.  The additional property needed
-    // for safety is uniqueness of the TinRefs in the rs argument,
-    // which is runtime checked.
-
-    // Note: It may be worth having a special case for N > something
-    // that uses HashMaps to find duplicates instead of the current
-    // O(N^2) methods.  But most useful cases will have small N.
-
-    pub fn get_many_maybe_mut<'r, T: ?Sized + 'r, const N: usize>(
-        &'r mut self,
-        rs: &[TinRef<'i, 'r, T>; N],
-    ) -> [Option<&'r mut T>; N] {
-        // element is None iff a duplicate of a later element
-        array::from_fn(|i| {
-            let e = rs[i];
-            if rs[(i + 1)..].contains(&e) {
-                None
-            } else {
-                // SAFETY: mutable borrow of TinTok<'i> singleton
-                // (self), with no duplicates due to check above
-                Some(unsafe { e.as_mut() })
-            }
-        })
-    }
-
-    pub fn get_many_mut_maybe<'r, T: ?Sized + 'r, const N: usize>(
-        &'r mut self,
-        rs: &[TinRef<'i, 'r, T>; N],
-    ) -> [Option<&'r mut T>; N] {
-        // element is None iff a duplicate of an earlier element
-        array::from_fn(|i| {
-            let e = rs[i];
-            if rs[..i].contains(&e) {
-                None
-            } else {
-                // SAFETY: mutable borrow of TinTok<'i> singelton
-                // (self), with no duplicates due to check above
-                Some(unsafe { e.as_mut() })
-            }
-        })
-    }
-
-    pub fn get_many_mut<'r, T: ?Sized + 'r, const N: usize>(
-        &'r mut self,
-        rs: &[TinRef<'i, 'r, T>; N],
-    ) -> Option<[&'r mut T; N]> {
-        // Yes, it's 2-pass, because core::array::try_from_fn is
-        // currently only nightly.  This would be identical to
-        // get_many_maybe_mut with try_from_fn instead of from_fn.
-        if rs[1..].iter().enumerate().any(|(i, e)| rs[..i].contains(e)) {
-            None
-        } else {
-            // SAFETY: mutable borrow of TinTok<'i> singleton (self),
-            // with no duplicates due to check above
-            Some(array::from_fn(|i| unsafe { rs[i].as_mut() }))
-        }
     }
 }
 
